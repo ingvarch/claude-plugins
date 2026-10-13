@@ -7,7 +7,7 @@ const HELP = [
   '/brn:setup     create .brain/ and let Claude fill it from the repo (once per project)',
   '/brn:end       hand over now: rewrite now, append log, add records, lint',
   '/brn           this status',
-  'Automatic: card+now in the system prompt, traps shown at the moment of risk, subagents briefed and their',
+  'Automatic: card+now with the first prompt, traps shown at the moment of risk, subagents briefed and their',
   'brn records captured, brain updated after edits, graphify used for structure when present.',
   'Advanced: /brn slice|brief|add|log|lint|start|all',
 ].join('\n')
@@ -174,12 +174,14 @@ export const register: Register = (on, options) => {
   const trapsAtRisk = options.trapsAtRisk !== false
 
   let snapshot: Snapshot | null = null
+  let attached = false
   let editsSinceNow = 0
   let editedPaths = new Set<string>()
   let handoverPending = false
   const shownTraps = new Set<string>()
 
   on('session.start', async ($, e, next) => {
+    attached = false
     await $.command.register({ name: 'brn', description: 'Project brain: setup once, then forget. /brn:end hands over.', argumentHint: 'setup|end' })
     await $.tool.register({ name: 'brain', description: TOOL_DESCRIPTION, inputSchema: TOOL_SCHEMA, isDeferred: false })
     if (globalIgnore) {
@@ -194,21 +196,24 @@ export const register: Register = (on, options) => {
     return { result: text as never }
   })
 
-  // card+now are read once per session (and again after a compaction) so the
-  // system prompt stays byte-stable and the conversation stays cached.
-  on('prompt.compose', async ($, e, next) => {
-    const result = await next(e)
-    if (!snapshot) snapshot = await readSnapshot($).catch(() => null)
-    if (!snapshot) return result
+  // card+now ride the first prompt of the session (and the first after a compaction) as hidden context.
+  // Not the system prompt: an organization's security plugin may bypass a user plugin's prompt.compose,
+  // while prompt.submit context always lands, sits in the history once and stays cached.
+  on('prompt.submit', async ($, e, next) => {
+    if (attached) return next(e)
+    attached = true
+    snapshot = await readSnapshot($).catch(() => null)
+    if (!snapshot) return next(e)
     const card = snapshot.card.trim()
     const text = ['# Project brain (.brain/, brn notation)', card.startsWith(';brn') ? '' : KEY, protocol(snapshot.graphify), '## card', card, '## now', snapshot.now.trim()]
       .filter(Boolean)
       .join('\n')
-    return { sections: [...result.sections, { id: 'brn:brain', text, scope: 'session' }] }
+    return next({ ...e, context: [...(e.context ?? []), text] })
   })
 
   on('session.compact', async ($, e, next) => {
     snapshot = null
+    attached = false
     shownTraps.clear()
     const keep = 'Keep the brn handover state verbatim: current goal, exact next step, blockers, files being edited, and any decisions or gotchas not yet written to .brain/.'
     return next({ ...e, instructions: e.instructions ? `${e.instructions}\n${keep}` : keep })

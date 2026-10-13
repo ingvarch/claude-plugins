@@ -1,6 +1,6 @@
 {
   "name": "brn",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Project brain in brn notation: setup once, then card+now in the prompt, traps at the moment of risk, briefed subagents, automatic handover, graphify-aware",
   "author": {
     "name": "ingvarch"

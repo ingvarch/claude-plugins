@@ -5,8 +5,6 @@ type On = Parameters<Parameters<typeof test>[1] extends (...a: infer A) => unkno
 const CARD = ';brn1 .fact !dec ~trap ?open\n=demo go1.24 api :: ledger\n@s=internal/\n.1 config env-only #infra\n'
 const NOW = '> ship v2\n= tests red @261013\n- fix cursor list.go:71\n'
 const TRAPS = '~1 goose w/o -dir prints no migrations and exits 0 #db\n~2 golangci errcheck false-pos @s/users/list.go:40 #ci\n'
-const base = { sections: [{ id: 'intro', text: 'hi', scope: 'shared' as const }] }
-const compose = { model: 'claude-fable-5-1', promptModel: 'claude-fable-5-1', surfaces: ['terminal' as const], tools: [], outputStyle: null, traits: [] }
 const EDIT = { result: { filePath: 'x', oldString: 'x', newString: 'y', originalFile: 'x', structuredPatch: [], userModified: false, replaceAll: false } as never }
 const turn = { reason: 'answer' as const, answer: 'done', durationMs: 10, isAborted: false, turnId: 't1' }
 
@@ -23,56 +21,56 @@ function brainFs(on: On, files: Record<string, string> = {}) {
   return fs
 }
 
-test('prompt.compose appends card+now and freezes the snapshot for the session', async ($, on) => {
+test('the first prompt carries card+now as hidden context, later prompts do not', async ($, on) => {
   const fs = brainFs(on)
-  on('prompt.compose', () => base)
-  let r = await $.prompt.compose(compose)
-  const s = r.sections.find(x => x.id === 'brn:brain')!
-  expect(s.scope).toBe('session')
-  expect(s.text).toContain('=demo go1.24 api')
-  expect(s.text).toContain('- fix cursor list.go:71')
-  expect(s.text).not.toContain('graphify')
+  const seen: (readonly string[] | undefined)[] = []
+  on('prompt.submit', (_, e) => (seen.push(e.context), { text: e.text, context: e.context }))
+  await $.prompt.submit({ text: 'hi' })
+  const ctx = seen[0]?.join('\n') ?? ''
+  expect(ctx).toContain('# Project brain')
+  expect(ctx).toContain('=demo go1.24 api')
+  expect(ctx).toContain('- fix cursor list.go:71')
+  expect(ctx).not.toContain('graphify')
   fs['/proj/.brain/now'] = '> changed\n= later @261014\n'
-  r = await $.prompt.compose(compose)
-  expect(r.sections.find(x => x.id === 'brn:brain')!.text).toContain('- fix cursor list.go:71')
+  await $.prompt.submit({ text: 'again' })
+  expect(seen[1] ?? []).toEqual([])
 })
-
-test('session.compact refreshes the snapshot and asks the summary to keep handover state', async ($, on) => {
+test('session.compact re-attaches fresh card+now and asks the summary to keep handover state', async ($, on) => {
   const fs = brainFs(on)
-  on('prompt.compose', () => base)
+  const seen: (readonly string[] | undefined)[] = []
+  on('prompt.submit', (_, e) => (seen.push(e.context), { text: e.text, context: e.context }))
   let instructions = ''
   on('session.compact', (_, e) => ((instructions = e.instructions ?? ''), { messages: e.messages }))
-  await $.prompt.compose(compose)
+  await $.prompt.submit({ text: 'hi' })
   fs['/proj/.brain/now'] = '> changed\n= later @261014\n'
   await $.session.compact({ trigger: 'manual', instructions: 'focus on tests', messages: [{ role: 'user', text: 'hi', toolUses: [] }] } as never)
   expect(instructions).toContain('focus on tests')
   expect(instructions).toContain('brn handover state')
-  const r = await $.prompt.compose(compose)
-  expect(r.sections.find(x => x.id === 'brn:brain')!.text).toContain('> changed')
+  await $.prompt.submit({ text: 'after' })
+  expect(seen[1]?.join('\n')).toContain('> changed')
 })
-
 test('graphify-out/graph.json switches on the graph protocol and the subagent hint', async ($, on) => {
   brainFs(on, { '/proj/graphify-out/graph.json': '{}' })
-  on('prompt.compose', () => base)
+  let ctx = ''
+  on('prompt.submit', (_, e) => ((ctx = (e.context ?? []).join('\n')), { text: e.text }))
   let seen = ''
   on('agent.spawn', (_, e) => ((seen = e.prompt), { model: 'claude-haiku-5-5' }))
-  const r = await $.prompt.compose(compose)
-  expect(r.sections.find(x => x.id === 'brn:brain')!.text).toContain('graphify query')
+  await $.prompt.submit({ text: 'hi' })
+  expect(ctx).toContain('graphify query')
   await $.agent.spawn({ subagentType: 'Explore', prompt: 'find how #db migrations run', description: 'db' })
   expect(seen.startsWith(';brn1')).toBe(true)
   expect(seen).toContain('~1 goose')
   expect(seen).toContain('graphify path A B')
   expect(seen).toContain('TASK:\nfind how #db migrations run')
 })
-
-test('prompt.compose leaves the prompt alone without .brain', async ($, on) => {
+test('without .brain the prompt goes through untouched', async ($, on) => {
   on('session.cwd', () => ({ value: '/proj' }))
   on('fs.exists', () => ({ value: false }))
-  on('prompt.compose', () => base)
-  const r = await $.prompt.compose(compose)
-  expect(r.sections.map(x => x.id)).toEqual(['intro'])
+  let ctx: readonly string[] | undefined
+  on('prompt.submit', (_, e) => ((ctx = e.context), { text: e.text }))
+  await $.prompt.submit({ text: 'hi' })
+  expect(ctx ?? []).toEqual([])
 })
-
 test('Bash gets matching traps once; Edit matches traps through path aliases', async ($, on) => {
   brainFs(on)
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
@@ -177,6 +175,9 @@ test('turn.complete after edits submits the brain update once, naming the files'
   const submitted: string[] = []
   on('prompt.submit', (_, e) => (submitted.push(e.text), { text: e.text }))
   on('turn.complete', () => ({ text: 'done' }))
+  // The session's first prompt (it carries the brain); the handover prompt is a later one.
+  await $.prompt.submit({ text: 'start' })
+  submitted.length = 0
   await $.turn.complete(turn)
   expect(submitted.length).toBe(0)
   await $.tool.call({ tool: 'Edit', file_path: '/proj/a.go', old_string: 'x', new_string: 'y' })
@@ -193,6 +194,8 @@ test('turn.complete ignores aborted turns and respects minEdits', { options: { m
   let n = 0
   on('prompt.submit', (_, e) => (n++, { text: e.text }))
   on('turn.complete', () => ({ text: 'done' }))
+  await $.prompt.submit({ text: 'start' })
+  n = 0
   await $.tool.call({ tool: 'Edit', file_path: '/proj/a.go', old_string: 'x', new_string: 'y' })
   await $.turn.complete({ ...turn, reason: 'aborted', isAborted: true })
   await $.turn.complete(turn)

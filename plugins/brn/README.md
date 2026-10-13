@@ -24,7 +24,7 @@ Locally, without installing: `claude --plugin-dir ~/Repos/ingvarch/claude-plugin
 
 From then on everything is automatic while the project has `.brain/card`:
 
-- `card`+`now` and the protocol are injected into the system prompt. The snapshot is taken once per session and after compaction, so the system prompt doesn't change mid-conversation and the cache isn't broken.
+- `card`+`now` and the protocol ride the first prompt of the session (and the first after a compaction) as hidden context: the model reads them, you don't see them. They enter the history once, so later turns hit the prompt cache. Not the system prompt on purpose: on Team and Enterprise plans Claude Code's built-in security plugin skips user plugins' system prompt and `SessionStart` hooks, while prompt context always lands.
 - The model gets a native `mcp__brn__brain` tool (`add`, `log`, `lint`, `slice`, `brief`, `status`) and writes records with it rather than through the shell.
 - Traps at the moment of risk: when Claude runs a Bash command, edits or reads a file, matching lines from `traps` are attached to the tool result. A trap matches on a path, file name, identifier (`tool.call`, `REDIS_URL`) or the program being run; plain words like `result` need two hits in the same trap. Each trap is shown once per session.
 - Every subagent launched via the Agent tool gets a brief prepended to its prompt: key, `card`, a slice by the `#tags` from the task, `now`. The `. ! ~ ?` records it returns go into the brain as unverified (suffix `?`), with deduplication. Background subagents count too: their records are captured when they finish, and the next result tells the model which ids were added.
@@ -75,7 +75,7 @@ is never loaded whole:
 | the whole brain (`brn all`) | never automatically | 667 | 100% |
 
 The Markdown version loads all 841 tokens every session. The brn snapshot is 381: 55% less, and because it's
-taken once per session the system prompt stays byte-identical and the prompt cache keeps hitting.
+attached once per session it sits in the history and the prompt cache keeps hitting.
 
 What the difference looks like, one record each:
 
@@ -114,7 +114,7 @@ uvx --with tiktoken python bench/count.py /tmp/start.txt /tmp/slice.txt /tmp/bri
 On your own project, after `/brn:setup`:
 
 - `uvx --with tiktoken python <plugin>/bench/count.py .brain/card .brain/now` shows the per-session cost.
-- `/context` in Claude Code shows how much of the system prompt the brain takes. Compare against your
+- `/context` in Claude Code shows the brain under messages (it rides the first prompt). Compare against your
   `CLAUDE.md` or the notes file it replaces.
 - For a before/after test, run the same task twice in fresh sessions, once with `.brain/` renamed away,
   and compare `/cost`. Expect the biggest difference on tasks that send work to subagents, because
