@@ -244,7 +244,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (/\.brain\//.test(e.command)) {
       editsSinceNow = 0
-      return next(e)
+      return withCaptured(await next(e))
     }
     const ran = await next(e)
     const out = trapsAtRisk ? await attachTraps($, needlesFromCommand(e.command), ran, shownTraps, commandHeads(e.command)) : ran
@@ -265,8 +265,8 @@ export const register: Register = (on, options) => {
   })
 
   // Records a subagent returns (. ! ~ ? lines without ids) land in the brain as unverified.
-  // SubagentStop sees every subagent's final answer, background ones included, whose Agent call
-  // returns only "launched"; the ids wait there and ride on the next Agent or Bash result.
+  // A subagent's own turn.complete (agentId set) and its SubagentHandback call carry its report, background
+  // ones included, whose Agent call returns only "launched"; the ids wait and ride on the next Agent or Bash result.
   let captured: string[] = []
   const withCaptured = <R extends { context?: readonly string[] }>(ran: R): R => {
     if (captured.length === 0) return ran
@@ -275,8 +275,10 @@ export const register: Register = (on, options) => {
     return { ...ran, context: [...(ran.context ?? []), note] }
   }
 
-  on('classic.SubagentStop', async ($, e, next) => {
-    if (captureRecords && e.last_assistant_message) captured.push(...(await appendSubagentRecords($, e.last_assistant_message).catch(() => [])))
+  // A subagent that reports through SubagentHandback ends on that tool call, so its report is the call's
+  // message, not its final answer.
+  on('tool.call', { tool: 'SubagentHandback' } as never, async ($: Engine, e: { message?: unknown }, next: (e: unknown) => Promise<{ context?: readonly string[] }>) => {
+    if (captureRecords && typeof e.message === 'string') captured.push(...(await appendSubagentRecords($, e.message).catch(() => [])))
     return next(e)
   })
 
@@ -290,6 +292,11 @@ export const register: Register = (on, options) => {
   // After a turn that edited files, let the model update the brain itself.
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    if ((e as { agentId?: string }).agentId) {
+      const answer = (e as { answer?: string }).answer
+      if (captureRecords && e.reason === 'answer' && answer) captured.push(...(await appendSubagentRecords($, answer).catch(() => [])))
+      return result
+    }
     if (handoverPending) {
       handoverPending = false
       editsSinceNow = 0
@@ -297,7 +304,6 @@ export const register: Register = (on, options) => {
       return result
     }
     if (!autoHandover || e.reason !== 'answer' || editsSinceNow < minEdits) return result
-    if ((e as { agentId?: string }).agentId) return result
     const brain = await brainOf($)
     if (!(await brain.exists().catch(() => false))) return result
     handoverPending = true

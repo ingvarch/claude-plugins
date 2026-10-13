@@ -119,18 +119,27 @@ test('Agent results with brn record lines are appended as unverified, deduplicat
   expect(r.context?.join('\n')).toContain('appended 2 unverified')
 })
 
-test('a background subagent records land at SubagentStop and are reported on the next Bash result', async ($, on) => {
+test('a background subagent records land at its turn.complete and are reported on the next Bash result', async ($, on) => {
   const fs = brainFs(on)
-  on('classic.SubagentStop', () => ({}))
+  on('turn.complete', () => ({ text: 'done' }))
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
   const report = 'Done.\n. graph has 100 nodes #graphify\n~ setup.md still shells to bin/brn init #plugin\n'
-  await $.classic.SubagentStop({ stop_hook_active: false, agent_id: 'a1', agent_transcript_path: '', agent_type: 'general-purpose', last_assistant_message: report })
+  await $.turn.complete({ ...turn, answer: report, agentId: 'a1' } as never)
   expect(fs['/proj/.brain/facts']).toBe('.2 graph has 100 nodes #graphify ?\n')
   expect(fs['/proj/.brain/traps']).toContain('~3 setup.md still shells to bin/brn init #plugin ?\n')
   const r = await $.tool.call({ tool: 'Bash', command: 'ls' })
   expect(r.context?.join('\n')).toContain('appended 2 unverified record(s) from subagents: .2 ~3')
   const again = await $.tool.call({ tool: 'Bash', command: 'pwd' })
   expect(again.context ?? []).toEqual([])
+})
+
+test('a report handed back through SubagentHandback is captured', async ($, on) => {
+  const fs = brainFs(on)
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  await $.tool.call({ tool: 'SubagentHandback', message: 'No tools used.\n. capture via handback #check\n' } as never)
+  expect(fs['/proj/.brain/facts']).toBe('.2 capture via handback #check ?\n')
+  const r = await $.tool.call({ tool: 'Bash', command: 'ls' })
+  expect(r.context?.join('\n')).toContain('from subagents: .2')
 })
 
 test('the brain tool adds, logs, slices and lints', async ($, on) => {
