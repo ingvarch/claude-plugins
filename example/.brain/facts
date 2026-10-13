@@ -1,0 +1,3 @@
+.5 redis only for rate limit, keys rl:{ip}, ttl 60s #api #infra
+.6 ci = gh actions, @.github/workflows/ci.yml, ~4min, no cache #ci
+.7 prod deploy manual via make deploy, needs AWS_PROFILE=ledger ? #infra

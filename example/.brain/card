@@ -1,0 +1,12 @@
+;brn1 .fact !dec ~trap ?open >goal =state -next xblock +done @path $cmd &who %num ^ref ::why ->then <supersedes ?=unsure #tag @yymmdd
+=ledger go1.24 http api :: pg16 redis7 chi, single module
+@s=internal/ @t=internal/**/*_test.go @m=migrations/ @c=cmd/ledger/
+$run make dev :: compose up pg+redis -> :8080
+$test go test ./... | $test1 go test ./internal/users/ -run NAME
+$mig make migrate :: goose, dir @m | $lint make lint :: golangci
+&igor owner :: small PRs, no dep churn, ru/en ok
+;lex UH=users handler @s/users/handler.go  AE=auth engine @s/auth/
+.1 config env-only, no files :: 12factor #infra
+.2 all ids uuidv7, db default gen #db
+.3 AE verifies JWT RS256, pubkey @s/auth/keys.go:14 #api
+.4 errors wrapped w/ %w, http map in @s/httperr.go #api

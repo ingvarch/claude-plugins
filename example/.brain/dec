@@ -1,0 +1,3 @@
+!7 pg over sqlite :: concurrent writers, prod parity @260902 #db
+!8 chi over gin :: stdlib handlers, fewer deps #api
+!9 cursor pagination, uuidv7 as cursor :: offset slow >1M rows ^.2 @261011 #api #db

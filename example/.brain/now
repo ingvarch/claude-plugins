@@ -1,0 +1,7 @@
+> v2 users endpoint w/ cursor pagination ^!9
+= handlers+tests written, 3 tests red :: nil cursor on first page @261013
+@ @s/users/list.go @s/users/handler.go @m/0007_cursor.sql :: uncommitted
+- fix nil cursor @s/users/list.go:71 -> $test1 TestListUsers
+- add 429 case -> open PR "users v2"
+x staging deploy :: &igor adds STAGING_DB_URL to gh secrets
+?6 keep /v1/users after 261201? :: ask igor, affects !9
