@@ -95,6 +95,20 @@ test('tags and words shared by many traps do not trigger traps', async ($, on) =
   expect(r.context?.join('\n')).toContain('~8 plugin quirk')
 })
 
+test('one plain word from code does not pick a trap; a program, identifier or two words do', async ($, on) => {
+  const traps = '~1 test fixtures: tool.call answers { result }, ops answer { value } #plugin\n~2 claude -p waits on stdin from a script #plugin\n~3 goose prints no migrations #db\n'
+  brainFs(on, { '/proj/.brain/traps': traps })
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  let r = await $.tool.call({ tool: 'Bash', command: 'python3 -c "\nresult = detect(x)\nprint(result)\nline = sys.stdin.readline()\n"' })
+  expect(r.context ?? []).toEqual([])
+  r = await $.tool.call({ tool: 'Bash', command: 'cd x && goose up' })
+  expect(r.context?.join('\n')).toContain('~3 goose')
+  r = await $.tool.call({ tool: 'Bash', command: 'grep -rn tool.call hooks/' })
+  expect(r.context?.join('\n')).toContain('~1 test fixtures')
+  r = await $.tool.call({ tool: 'Bash', command: 'echo "read stdin in the script"' })
+  expect(r.context?.join('\n')).toContain('~2 claude -p')
+})
+
 test('Agent results with brn record lines are appended as unverified, deduplicated', async ($, on) => {
   const fs = brainFs(on)
   const report = 'Found it.\n. redis only for rate limit, keys rl:{ip} #api\n~ tests hang if REDIS_URL unset -> export it #test\n. config env-only #infra\n- not a record\n'
@@ -103,6 +117,20 @@ test('Agent results with brn record lines are appended as unverified, deduplicat
   expect(fs['/proj/.brain/facts']).toBe('.2 redis only for rate limit, keys rl:{ip} #api ?\n')
   expect(fs['/proj/.brain/traps']).toContain('~3 tests hang if REDIS_URL unset -> export it #test ?\n')
   expect(r.context?.join('\n')).toContain('appended 2 unverified')
+})
+
+test('a background subagent records land at SubagentStop and are reported on the next Bash result', async ($, on) => {
+  const fs = brainFs(on)
+  on('classic.SubagentStop', () => ({}))
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  const report = 'Done.\n. graph has 100 nodes #graphify\n~ setup.md still shells to bin/brn init #plugin\n'
+  await $.classic.SubagentStop({ stop_hook_active: false, agent_id: 'a1', agent_transcript_path: '', agent_type: 'general-purpose', last_assistant_message: report })
+  expect(fs['/proj/.brain/facts']).toBe('.2 graph has 100 nodes #graphify ?\n')
+  expect(fs['/proj/.brain/traps']).toContain('~3 setup.md still shells to bin/brn init #plugin ?\n')
+  const r = await $.tool.call({ tool: 'Bash', command: 'ls' })
+  expect(r.context?.join('\n')).toContain('appended 2 unverified record(s) from subagents: .2 ~3')
+  const again = await $.tool.call({ tool: 'Bash', command: 'pwd' })
+  expect(again.context ?? []).toEqual([])
 })
 
 test('the brain tool adds, logs, slices and lints', async ($, on) => {

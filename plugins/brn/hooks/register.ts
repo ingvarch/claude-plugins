@@ -1,5 +1,5 @@
 import type { Engine, Register } from 'claude-code'
-import { Brain, KEY, isSigil, matchTraps, needlesFromCommand, normalize, parseRecords, type Fs, type Sigil } from './brain'
+import { Brain, KEY, commandHeads, isSigil, matchTraps, needlesFromCommand, normalize, parseRecords, type Fs, type Sigil } from './brain'
 
 const TOOL = 'mcp__brn__brain'
 
@@ -81,10 +81,11 @@ async function attachTraps(
   needles: readonly string[],
   ran: { context?: readonly string[] },
   shown: Set<string>,
+  heads: readonly string[] = [],
 ): Promise<{ context?: readonly string[] }> {
   if (needles.length === 0) return ran
   const brain = await brainOf($)
-  const hits = matchTraps(await brain.traps(), await brain.aliases(), needles)
+  const hits = matchTraps(await brain.traps(), await brain.aliases(), needles, heads)
     .filter(t => !shown.has(t))
     .slice(0, 3)
   if (hits.length === 0) return ran
@@ -101,6 +102,24 @@ function agentText(ran: unknown): string {
   const r = ran as { text?: unknown; result?: { content?: { type?: string; text?: string }[] } }
   if (typeof r.text === 'string') return r.text
   return (r.result?.content ?? []).filter(c => c.type === 'text').map(c => c.text ?? '').join('\n')
+}
+
+// Appends the . ! ~ ? lines of a subagent's answer as unverified records, skipping known bodies; returns the new ids.
+async function appendSubagentRecords($: Engine, answer: string): Promise<string[]> {
+  const records = parseRecords(answer)
+  if (records.length === 0) return []
+  const brain = await brainOf($)
+  if (!(await brain.exists())) return []
+  const known = await brain.bodies().catch(() => new Set<string>())
+  const added: string[] = []
+  for (const { sigil, body } of records) {
+    if (known.has(normalize(body))) continue
+    known.add(normalize(body))
+    const text = /\?\??\s*$/.test(body) ? body : `${body} ?`
+    const out = await brain.add(sigil as Sigil, text).catch(() => null)
+    if (out) added.push(out.split(' ')[0])
+  }
+  return added
 }
 
 async function ensureGlobalIgnore($: Engine): Promise<string | null> {
@@ -228,7 +247,8 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     const ran = await next(e)
-    return trapsAtRisk ? attachTraps($, needlesFromCommand(e.command), ran, shownTraps) : ran
+    const out = trapsAtRisk ? await attachTraps($, needlesFromCommand(e.command), ran, shownTraps, commandHeads(e.command)) : ran
+    return withCaptured(out)
   })
 
   // Every subagent gets the brief: key + card + tag slice + now, then its task.
@@ -245,24 +265,26 @@ export const register: Register = (on, options) => {
   })
 
   // Records a subagent returns (. ! ~ ? lines without ids) land in the brain as unverified.
+  // SubagentStop sees every subagent's final answer, background ones included, whose Agent call
+  // returns only "launched"; the ids wait there and ride on the next Agent or Bash result.
+  let captured: string[] = []
+  const withCaptured = <R extends { context?: readonly string[] }>(ran: R): R => {
+    if (captured.length === 0) return ran
+    const note = `brn: appended ${captured.length} unverified record(s) from subagents: ${captured.join(' ')}. Verify and drop the ? suffix, or delete.`
+    captured = []
+    return { ...ran, context: [...(ran.context ?? []), note] }
+  }
+
+  on('classic.SubagentStop', async ($, e, next) => {
+    if (captureRecords && e.last_assistant_message) captured.push(...(await appendSubagentRecords($, e.last_assistant_message).catch(() => [])))
+    return next(e)
+  })
+
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
     const ran = await next(e)
     if (!captureRecords || ran.deny !== undefined) return ran
-    const records = parseRecords(agentText(ran))
-    if (records.length === 0) return ran
-    const brain = await brainOf($)
-    if (!(await brain.exists())) return ran
-    const known = await brain.bodies().catch(() => new Set<string>())
-    const added: string[] = []
-    for (const { sigil, body } of records) {
-      if (known.has(normalize(body))) continue
-      known.add(normalize(body))
-      const text = /\?\??\s*$/.test(body) ? body : `${body} ?`
-      const out = await brain.add(sigil as Sigil, text).catch(() => null)
-      if (out) added.push(out.split(' ')[0])
-    }
-    if (added.length === 0) return ran
-    return { ...ran, context: [...(ran.context ?? []), `brn: appended ${added.length} unverified record(s) from the subagent: ${added.join(' ')}. Verify and drop the ? suffix, or delete.`] }
+    captured.push(...(await appendSubagentRecords($, agentText(ran)).catch(() => [])))
+    return withCaptured(ran)
   })
 
   // After a turn that edited files, let the model update the brain itself.

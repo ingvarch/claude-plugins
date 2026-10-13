@@ -26,8 +26,8 @@ From then on everything is automatic while the project has `.brain/card`:
 
 - `card`+`now` and the protocol are injected into the system prompt. The snapshot is taken once per session and after compaction, so the system prompt doesn't change mid-conversation and the cache isn't broken.
 - The model gets a native `mcp__brn__brain` tool (`add`, `log`, `lint`, `slice`, `brief`, `status`) and writes records with it rather than through the shell.
-- Traps at the moment of risk: when Claude runs a Bash command, edits or reads a file, matching lines from `traps` are attached to the tool result. Each trap is shown once per session.
-- Every subagent launched via the Agent tool gets a brief prepended to its prompt: key, `card`, a slice by the `#tags` from the task, `now`. The `. ! ~ ?` records it returns go into the brain as unverified (suffix `?`), with deduplication.
+- Traps at the moment of risk: when Claude runs a Bash command, edits or reads a file, matching lines from `traps` are attached to the tool result. A trap matches on a path, file name, identifier (`tool.call`, `REDIS_URL`) or the program being run; plain words like `result` need two hits in the same trap. Each trap is shown once per session.
+- Every subagent launched via the Agent tool gets a brief prepended to its prompt: key, `card`, a slice by the `#tags` from the task, `now`. The `. ! ~ ?` records it returns go into the brain as unverified (suffix `?`), with deduplication. Background subagents count too: their records are captured when they finish, and the next result tells the model which ids were added.
 - After a turn in which Claude edited files, the plugin runs a short brain-update turn on its own and passes the list of edited files. If there's nothing to record, Claude replies "brain current".
 - Before context compaction the plugin asks the summary to preserve the handover state verbatim.
 - If the project has `graphify-out/graph.json`, the protocol and briefs route structural questions to graphify, and structural facts aren't written to `.brain`. During `/brn:setup`, `GRAPH_REPORT.md` is used to pick aliases and the lexicon.

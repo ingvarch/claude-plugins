@@ -187,7 +187,25 @@ export function needlesFromCommand(command: string): string[] {
   )
 }
 
-export function matchTraps(traps: readonly string[], aliases: Record<string, string>, needles: readonly string[]): string[] {
+// The program each command segment runs (`goose`, `make`, `golangci-lint`): a strong needle even as a plain word.
+export function commandHeads(command: string): string[] {
+  const heads = new Set<string>()
+  for (const seg of command.toLowerCase().split(/\n|\||;|&&|\$\(|`/)) {
+    const m = seg.trim().replace(/^(?:[a-z_][a-z0-9_]*=\S*\s+|sudo\s+|env\s+|time\s+|exec\s+)*/, '').match(/^([a-z0-9][a-z0-9_.-]*)\s*(.?)/)
+    // `x = ...` and `f(...)` are code inside a heredoc or -c string, not a program.
+    if (m && m[2] !== '=' && m[2] !== '(' && !STOP.has(m[1])) heads.add(m[1])
+  }
+  return Array.from(heads)
+}
+
+// Strong: a path, a file, an identifier (tool.call, REDIS_URL, rs256), a program name. One strong hit picks a trap;
+// plain words like `result` or `words` show up in any code, so a trap needs two of them.
+export function matchTraps(
+  traps: readonly string[],
+  aliases: Record<string, string>,
+  needles: readonly string[],
+  heads: readonly string[] = [],
+): string[] {
   if (needles.length === 0 || traps.length === 0) return []
   // Tags and dates are metadata, not content; match whole words or path tails only.
   const hays = traps.map(t => expandAliases(t, aliases).replace(/#[a-z][\w-]*/gi, ' ').replace(/@\d{6}/g, ' ').toLowerCase())
@@ -203,16 +221,17 @@ export function matchTraps(traps: readonly string[], aliases: Record<string, str
     })
     return out
   }
+  const strong = (n: string) => /[./_0-9-]/.test(n) || heads.includes(n)
   // A needle that hits many traps does not discriminate (e.g. a word every trap shares): drop it.
   const limit = Math.max(2, Math.ceil(traps.length * 0.2))
-  const picked = new Set<number>()
+  const score = new Map<number, number>()
   for (const n of needles) {
     if (n.length < 4) continue
     const hits = hitBy(n)
     if (hits.length > limit) continue
-    for (const i of hits) picked.add(i)
+    for (const i of hits) score.set(i, (score.get(i) ?? 0) + (strong(n) ? 2 : 1))
   }
-  return traps.filter((_, i) => picked.has(i))
+  return traps.filter((_, i) => (score.get(i) ?? 0) >= 2)
 }
 
 export const RECORD = /^([.!~?]) (\S.*)$/
