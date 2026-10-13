@@ -188,8 +188,8 @@ export function needlesFromCommand(command: string): string[] {
 }
 
 // Words that occur only inside a quoted phrase or a heredoc (`-m "fix prompt.submit"`, `query "who calls X"`,
-// `commit -F - <<EOF`): text the command carries, not what it touches, so they count as plain words even when
-// they look like identifiers.
+// `commit -F - <<EOF`): text the command carries, not what it touches, so they pick no trap even when they
+// look like identifiers.
 export function proseWords(command: string): string[] {
   const heredocs = Array.from(command.matchAll(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n\s*\2(?=\s|$)/g), m => m[3])
   const quoted = command.match(/"(?:[^"\\\n]|\\.)*"|'[^'\n]*'/g) ?? []
@@ -245,12 +245,12 @@ export function matchTraps(
     })
     return out
   }
-  const strong = (n: string) => !weak.includes(n) && (/[./_0-9-]/.test(n) || heads.includes(n))
+  const strong = (n: string) => /[./_0-9-]/.test(n) || heads.includes(n)
   // A needle that hits many traps does not discriminate (e.g. a word every trap shares): drop it.
   const limit = Math.max(2, Math.ceil(traps.length * 0.2))
   const score = new Map<number, number>()
   for (const n of needles) {
-    if (n.length < 4) continue
+    if (n.length < 4 || weak.includes(n)) continue
     const hits = hitBy(n)
     if (hits.length > limit) continue
     for (const i of hits) score.set(i, (score.get(i) ?? 0) + (strong(n) ? 2 : 1))

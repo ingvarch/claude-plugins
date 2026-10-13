@@ -103,7 +103,7 @@ test('one plain word from code does not pick a trap; a program, identifier or tw
   expect(r.context?.join('\n')).toContain('~3 goose')
   r = await $.tool.call({ tool: 'Bash', command: 'grep -rn tool.call hooks/' })
   expect(r.context?.join('\n')).toContain('~1 test fixtures')
-  r = await $.tool.call({ tool: 'Bash', command: 'echo "read stdin in the script"' })
+  r = await $.tool.call({ tool: 'Bash', command: 'echo read stdin in the script' })
   expect(r.context?.join('\n')).toContain('~2 claude -p')
 })
 
@@ -111,7 +111,7 @@ test('identifiers inside a quoted phrase are prose, not what the command touches
   const traps = '~1 prompt.submit under command.run is not delivered to test hooks #plugin\n'
   brainFs(on, { '/proj/.brain/traps': traps })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
-  let r = await $.tool.call({ tool: 'Bash', command: 'graphify query "how does prompt.submit inject card and now"' })
+  let r = await $.tool.call({ tool: 'Bash', command: 'graphify query "is prompt.submit delivered to test hooks"' })
   expect(r.context ?? []).toEqual([])
   r = await $.tool.call({ tool: 'Bash', command: 'git commit -m "fix: attach card via prompt.submit"' })
   expect(r.context ?? []).toEqual([])
