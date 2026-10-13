@@ -1,0 +1,12 @@
+{
+  "name": "ingvarch",
+  "description": "ingvarch's Claude Code plugins",
+  "owner": { "name": "ingvarch" },
+  "plugins": [
+    {
+      "name": "brn",
+      "source": "./plugins/brn",
+      "description": "Project brain in brn notation: setup once, then automatic handover, traps at the moment of risk, briefed subagents, graphify-aware"
+    }
+  ]
+}

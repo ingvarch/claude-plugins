@@ -1,0 +1,4 @@
+.DS_Store
+# written by the Claude Code engine when a plugin loads
+plugins/*/.claude-plugin/types/
+plugins/*/tsconfig.json

@@ -1,16 +1,16 @@
-# ccbrain
+# brn
 
 `brn` — компактная нотация, в которой агент хранит знания о проекте: один факт на строку,
 сигил вместо заголовка, стабильные id вместо пересказа, отдельный файл `now` для handover.
-Этот репозиторий одновременно плагин Claude Code.
+Плагин из маркетплейса [ingvarch/claude-plugins](../../README.md).
 
 ## Установка плагина
 
 ```
-/plugin install brn --marketplace ingvarch/ccbrain
+/plugin install brn --marketplace ingvarch/claude-plugins
 ```
 
-Локально, без установки: `claude --plugin-dir ~/Repos/ingvarch/ccbrain`.
+Локально, без установки: `claude --plugin-dir ~/Repos/ingvarch/claude-plugins/plugins/brn`.
 
 ## Команды
 

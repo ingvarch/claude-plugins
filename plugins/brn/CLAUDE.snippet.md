@@ -6,4 +6,4 @@
 - Session end (mandatory, even mid-task): rewrite `.brain/now`; append one `@yymmdd +done -left` line to `.brain/log`;
   add new `.` `!` `~` `?` records with next ids. No prose, one claim per line, ≤140 chars, `?` suffix if unverified.
 - Subagent briefs: key line + card + tag slice + task. Ask them to RETURN brn records only, then append.
-- Spec: https://github.com/ingvarch/ccbrain/blob/main/SPEC.md
+- Spec: https://github.com/ingvarch/claude-plugins/blob/main/plugins/brn/SPEC.md
