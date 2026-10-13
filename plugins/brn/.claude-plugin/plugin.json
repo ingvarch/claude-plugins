@@ -1,0 +1,46 @@
+{
+  "name": "brn",
+  "version": "0.1.0",
+  "description": "Project brain in brn notation: setup once, then card+now in the prompt, traps at the moment of risk, briefed subagents, automatic handover, graphify-aware",
+  "author": {
+    "name": "ingvarch"
+  },
+  "keywords": [
+    "memory",
+    "handover",
+    "context",
+    "subagents"
+  ],
+  "userConfig": {
+    "autoHandover": {
+      "type": "boolean",
+      "description": "After a turn that edited files, let Claude update .brain/ in a follow-up turn",
+      "default": true,
+      "title": "Auto brain update"
+    },
+    "minEdits": {
+      "type": "number",
+      "description": "Edits (Edit/Write calls) in a turn before the automatic brain update fires",
+      "default": 1,
+      "title": "Edits before auto update"
+    },
+    "globalIgnore": {
+      "type": "boolean",
+      "description": "Add .brain/ to the machine's global git excludes file at session start",
+      "default": true,
+      "title": "Global gitignore for .brain/"
+    },
+    "captureSubagentRecords": {
+      "type": "boolean",
+      "title": "Capture subagent records",
+      "description": "Append . ! ~ ? lines a subagent returns to .brain/ as unverified records",
+      "default": true
+    },
+    "trapsAtRisk": {
+      "type": "boolean",
+      "title": "Traps at the moment of risk",
+      "description": "Attach matching .brain/traps lines to Bash, Edit, Write and Read results",
+      "default": true
+    }
+  }
+}

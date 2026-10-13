@@ -1,0 +1,5 @@
+~1 go test hangs if REDIS_URL unset -> run $run first or export it #test
+~2 goose w/o -dir @m prints "no migrations" and exits 0 #db
+~3 golangci errcheck false-pos @s/users/list.go:40, //nolint ok #ci
+~4 compose pg needs platform=linux/amd64 on arm, already set != remove #infra
+~5 chi URLParam empty if route has trailing slash #api

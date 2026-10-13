@@ -1,0 +1,32 @@
+;brn1 .fact !dec ~trap ?open >goal =state -next xblock +done @path $cmd &who %num ^ref ::why ->then <supersedes ?=unsure #tag @yymmdd
+=ledger go1.24 http api :: pg16 redis7 chi, single module
+@s=internal/ @t=internal/**/*_test.go @m=migrations/ @c=cmd/ledger/
+$run make dev :: compose up pg+redis -> :8080
+$test go test ./... | $test1 go test ./internal/users/ -run NAME
+$mig make migrate :: goose, dir @m | $lint make lint :: golangci
+&igor owner :: small PRs, no dep churn, ru/en ok
+;lex UH=users handler @s/users/handler.go  AE=auth engine @s/auth/
+.1 config env-only, no files :: 12factor #infra
+.2 all ids uuidv7, db default gen #db
+.3 AE verifies JWT RS256, pubkey @s/auth/keys.go:14 #api
+.4 errors wrapped w/ %w, http map in @s/httperr.go #api
+> v2 users endpoint w/ cursor pagination ^!9
+= handlers+tests written, 3 tests red :: nil cursor on first page @261013
+@ @s/users/list.go @s/users/handler.go @m/0007_cursor.sql :: uncommitted
+- fix nil cursor @s/users/list.go:71 -> $test1 TestListUsers
+- add 429 case -> open PR "users v2"
+x staging deploy :: &igor adds STAGING_DB_URL to gh secrets
+?6 keep /v1/users after 261201? :: ask igor, affects !9
+@261011 +scaffold v2 users pkg +!9 -tests
+@261013 +handlers +tests(3 red) +~5 -fix cursor -PR
+.5 redis only for rate limit, keys rl:{ip}, ttl 60s #api #infra
+.6 ci = gh actions, @.github/workflows/ci.yml, ~4min, no cache #ci
+.7 prod deploy manual via make deploy, needs AWS_PROFILE=ledger ? #infra
+!7 pg over sqlite :: concurrent writers, prod parity @260902 #db
+!8 chi over gin :: stdlib handlers, fewer deps #api
+!9 cursor pagination, uuidv7 as cursor :: offset slow >1M rows ^.2 @261011 #api #db
+~1 go test hangs if REDIS_URL unset -> run $run first or export it #test
+~2 goose w/o -dir @m prints "no migrations" and exits 0 #db
+~3 golangci errcheck false-pos @s/users/list.go:40, //nolint ok #ci
+~4 compose pg needs platform=linux/amd64 on arm, already set != remove #infra
+~5 chi URLParam empty if route has trailing slash #api

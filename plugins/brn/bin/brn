@@ -1,0 +1,61 @@
+#!/bin/sh
+# brn — helper for .brain/ (see SPEC.md). POSIX sh, no deps.
+set -e
+B="${BRAIN_DIR:-.brain}"
+KEY=';brn1 .fact !dec ~trap ?open >goal =state -next xblock +done @path $cmd &who %num ^ref ::why ->then <supersedes ?=unsure #tag @yymmdd'
+today() { date +%y%m%d; }
+need() { [ -d "$B" ] || { echo "no $B (run: brn init)" >&2; exit 1; }; }
+file_for() { case "$1" in .) echo facts;; '!') echo dec;; '~') echo traps;; '?') echo now;; *) echo "bad sigil: $1" >&2; exit 1;; esac; }
+
+case "${1:-help}" in
+init)
+  [ -d "$B" ] && { echo "$B exists" >&2; exit 1; }
+  mkdir -p "$B"
+  { echo "$KEY"; echo "=${2:-$(basename "$PWD")} <stack> :: <one line>"; echo '@s=src/'; echo '$test <cmd> | $run <cmd>'; echo '&owner <name> :: <prefs>'; } > "$B/card"
+  { echo '> <goal>'; echo "= fresh brain @$(today)"; echo '- read README, fill card'; } > "$B/now"
+  : > "$B/log"; : > "$B/facts"; : > "$B/dec"; : > "$B/traps"
+  echo "created $B/"; ls "$B" ;;
+start)   need; cat "$B/card" "$B/now" ;;
+all)     need; for f in card now log facts dec traps; do echo ";-- $f"; cat "$B/$f"; done ;;
+slice)   need; shift; [ $# -gt 0 ] || { echo "usage: brn slice '#tag' ['#tag'...]" >&2; exit 1; }
+         pat=$(printf '%s\n' "$@" | paste -sd'|' -)
+         grep -hE "$pat" "$B/card" "$B/facts" "$B/dec" "$B/traps" "$B/now" 2>/dev/null || true ;;
+brief)   need; shift; head -1 "$B/card" | grep -q '^;brn' || echo "$KEY"; cat "$B/card"; [ $# -gt 0 ] && { echo ';-- slice'; "$0" slice "$@"; }
+         echo ';-- now'; cat "$B/now"
+         echo 'RETURN: brn records only (. ! ~ ? lines, no ids, no prose), <=15 lines.' ;;
+id)      need; s="${2:?sigil}"; n=$(cat "$B"/* | grep -oE "^\\$s[0-9]+" | tr -dc '0-9\n' | sort -n | tail -1); echo $(( ${n:-0} + 1 )) ;;
+add)     need; s="${2:?sigil}"; shift 2; body="$*"; [ -n "$body" ] || { echo "usage: brn add <sigil> <body>" >&2; exit 1; }
+         f="$B/$(file_for "$s")"; n=$("$0" id "$s"); echo "$s$n $body" >> "$f"; echo "$s$n -> $f" ;;
+log)     need; shift; echo "@$(today) $*" >> "$B/log"; tail -1 "$B/log" ;;
+lint)    need; out=$( {
+         for f in card now log facts dec traps; do
+           [ -f "$B/$f" ] || { echo "missing $f"; continue; }
+           awk -v f="$f" 'length($0)>140 {print f":"NR": >140 chars"} /^[^.!~?>=\-x+@$&%^;[:space:]]/ && NF {print f":"NR": bad sigil: "substr($0,1,1)}' "$B/$f"
+         done
+         cat "$B"/* | grep -oE '^[.!~?][0-9]+' | sort | uniq -d | sed 's/^/dup id: /'
+         ids=$(cat "$B"/* | grep -oE '^[.!~?][0-9]+' | sort -u)
+         for r in $(cat "$B"/* | grep -oE '\^[.!~?][0-9]+' | tr -d '^' | sort -u); do
+           echo "$ids" | grep -qxF "$r" || echo "dangling ref: ^$r"; done
+         d=$(grep -oE '@[0-9]{6}' "$B/now" | head -1 | tr -d @)
+         if [ -n "$d" ]; then
+           age=$(( ( $(date +%s) - $(date -j -f %y%m%d "$d" +%s 2>/dev/null || date -d "20$d" +%s) ) / 86400 ))
+           [ "$age" -gt 7 ] && echo "now is ${age}d old: re-verify first '-'"
+         else echo "now: no @yymmdd on '=' line"; fi
+         true; } )
+         u=$(grep -cE ' \?\?? *$' "$B"/* | awk -F: '{s+=$2} END{print s+0}')
+         [ -n "$out" ] && echo "$out"; [ "$u" -gt 0 ] && echo "unverified records: $u (info)"
+         [ -z "$out" ] && { echo "lint ok"; exit 0; } || exit 1 ;;
+*) cat <<H
+brn — project brain helper (dir: $B, override with BRAIN_DIR)
+  init [name]        create .brain/ skeleton
+  start              print card+now  (session start)
+  all                print everything, sectioned
+  slice '#tag' ...   grep records by tag(s)
+  brief ['#tag'...]  key+card+slice+now, paste to a subagent
+  id <sigil>         next free id for . ! ~ ?
+  add <sigil> body   append record with next id (. -> facts, ! -> dec, ~ -> traps, ? -> now)
+  log text           append dated line to log
+  lint               long lines, bad sigils, dup ids, dangling refs, stale now
+H
+;;
+esac

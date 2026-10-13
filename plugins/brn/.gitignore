@@ -1,0 +1,12 @@
+# project brain lives per machine (also in the global excludes the plugin sets)
+/.brain/
+
+# written by the Claude Code engine when the plugin loads
+.claude-plugin/types/
+tsconfig.json
+
+# benchmark outputs regenerated from example/
+bench/start.brn
+bench/slice.brn
+
+.DS_Store
