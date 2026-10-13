@@ -26,7 +26,7 @@ From then on everything is automatic while the project has `.brain/card`:
 
 - `card`+`now` and the protocol ride the first prompt of the session (and the first after a compaction) as hidden context: the model reads them, you don't see them. They enter the history once, so later turns hit the prompt cache. Not the system prompt on purpose: on Team and Enterprise plans Claude Code's built-in security plugin skips user plugins' system prompt and `SessionStart` hooks, while prompt context always lands.
 - The model gets a native `mcp__brn__brain` tool (`add`, `log`, `lint`, `slice`, `brief`, `status`) and writes records with it rather than through the shell.
-- Traps at the moment of risk: when Claude runs a Bash command, edits or reads a file, matching lines from `traps` are attached to the tool result. A trap matches on a path, file name, identifier (`tool.call`, `REDIS_URL`) or the program being run; plain words like `result` need two hits in the same trap. Each trap is shown once per session.
+- Traps at the moment of risk: when Claude runs a Bash command, edits or reads a file, matching lines from `traps` are attached to the tool result. A trap matches on a path, file name, identifier (`tool.call`, `REDIS_URL`) or the program being run; plain words like `result` need two hits in the same trap. Words inside a quoted phrase (a commit message, a `graphify query "…"`) count as plain words, and commands on `.brain` itself get no traps. Each trap is shown once per session.
 - Every subagent launched via the Agent tool gets a brief prepended to its prompt: key, `card`, a slice by the `#tags` from the task, `now`. The `. ! ~ ?` records it returns go into the brain as unverified (suffix `?`), with deduplication. Background subagents count too: their records are captured when they finish, and the next result tells the model which ids were added.
 - After a turn in which Claude edited files, the plugin runs a short brain-update turn on its own and passes the list of edited files. If there's nothing to record, Claude replies "brain current".
 - Before context compaction the plugin asks the summary to preserve the handover state verbatim.
@@ -116,9 +116,15 @@ On your own project, after `/brn:setup`:
 - `uvx --with tiktoken python <plugin>/bench/count.py .brain/card .brain/now` shows the per-session cost.
 - `/context` in Claude Code shows the brain under messages (it rides the first prompt). Compare against your
   `CLAUDE.md` or the notes file it replaces.
-- For a before/after test, run the same task twice in fresh sessions, once with `.brain/` renamed away,
-  and compare `/cost`. Expect the biggest difference on tasks that send work to subagents, because
-  each one gets a tag slice instead of rediscovering the project.
+- For a before/after test, `sh <plugin>/bench/ab.sh . "<question>" ...` asks each question with `claude -p`
+  in two throwaway clones, A with `.brain/` (and `graphify-out/`), B without, and prints cost, turns and
+  cache tokens. Clones rather than worktrees, with reads of the real repo denied, because a bare run
+  otherwise finds the real `.brain/` and the comparison is void. `AB_KEEP=1` keeps the answers.
+
+On this repo (Oct 2026), a question about project state ("what open contradiction is there between the
+README and setup, and what's next") cost $0.09 in 1 turn with the brain. Without it, it cost $0.25 in 10
+turns and the answer was wrong. A pure code-structure question cost about the same either way
+($0.30 vs $0.27): the brain pays off on what the code can't tell you.
 
 ## With graphify
 
@@ -128,7 +134,7 @@ brn and [graphify](https://graphify.com) cover different halves of project knowl
 |---|---|---|
 | Source | parsed from code | written by the agent and you |
 | Knows | files, symbols, calls, clusters, impact of a change | decisions and why, traps, current state, next steps, people, commands |
-| Goes stale | regenerate with `/graphify .` | `lint` flags stale `now`; handover runs after edits |
+| Goes stale | after every commit unless `graphify hook install` rebuilds it | `lint` flags stale `now`; handover runs after edits |
 
 When `graphify-out/graph.json` exists, the plugin picks it up with no configuration:
 
@@ -140,6 +146,8 @@ When `graphify-out/graph.json` exists, the plugin picks it up with no configurat
 - `/brn:setup` reads `GRAPH_REPORT.md` first and uses its god nodes and clusters to choose `@` path aliases
   and `;lex` abbreviations, so the brain names things the way the graph groups them.
 - On repos with more than ~300 source files and no `graphify-out/`, `/brn:setup` suggests running `/graphify .`.
+- If the repo's `post-commit` hook doesn't rebuild the graph, the protocol says to run `graphify hook install`
+  once. A stale graph gives line numbers that drifted with the last commits.
 
 To check it's active: `/brn` prints `graphify detected`.
 

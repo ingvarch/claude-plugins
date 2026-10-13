@@ -1,5 +1,5 @@
 import type { Engine, Register } from 'claude-code'
-import { Brain, KEY, commandHeads, isSigil, matchTraps, needlesFromCommand, normalize, parseRecords, type Fs, type Sigil } from './brain'
+import { Brain, KEY, commandHeads, isSigil, matchTraps, needlesFromCommand, normalize, parseRecords, proseWords, type Fs, type Sigil } from './brain'
 
 const TOOL = 'mcp__brn__brain'
 
@@ -29,12 +29,15 @@ const TOOL_SCHEMA = {
 const GRAPHIFY_PROTOCOL =
   'graphify-out/ is present: for structure (where is X, who calls Y, impact of a change) run `graphify query "<q>"`, `graphify path A B` or `graphify explain X` before grep or Read. Do not store structural facts in .brain, the graph has them; store only what the graph cannot know: decisions, traps, state, people, commands.'
 
-const protocol = (graphify: boolean) =>
+const GRAPH_HOOK = 'The graph is not rebuilt on commit here, so its line numbers drift: run `graphify hook install` once, or `graphify update .` after edits.'
+
+const protocol = (graphify: boolean, graphHook = true) =>
   [
     'Protocol: card+now below are the session-start snapshot of the project brain; .brain/ on disk is authoritative once you update it.',
     'Trust them over re-discovery; verify records marked ?. Matching traps are attached to tool results as you work.',
     `Records: tool ${TOOL} op=add {sigil,text} (next id assigned), op=log {text}, op=lint, op=slice {tags}. Area work: op=slice with the #tags.`,
     graphify ? GRAPHIFY_PROTOCOL : '',
+    graphify && !graphHook ? GRAPH_HOOK : '',
     'Handover is yours to do, unasked, when a task is done or the person is wrapping up:',
     '(1) rewrite .brain/now fully: > goal, = state @yymmdd, @ hot paths, - next (verb first, first one runnable now), x blocked :: unblocker, ?N open.',
     '(2) op=log "+done +done -left ^refs". (3) op=add for every non-obvious . ! ~ ? learned: one claim per line, <=140 chars, telegraphic,',
@@ -53,7 +56,7 @@ const fillPrompt = () =>
 const autoPrompt = (edited: readonly string[]) =>
   `Brain update (automatic, brn protocol). Files edited last turn: ${edited.join(', ') || '(unknown)'}. Update .brain/ only: (1) rewrite .brain/now if goal, state or next steps changed (= state @yymmdd, @ hot paths, - next verb-first); (2) if this closed a piece of work, ${TOOL} op=log "+done -left"; (3) ${TOOL} op=add for anything non-obvious learned (. ! ~ ?), ? suffix if unverified; verify or delete records ending in ? that you can now confirm. Touch no other files, ask no questions, ${TOOL} op=lint if you wrote anything. If nothing is worth recording, reply exactly: brain current. Otherwise reply in <=3 lines.`
 
-type Snapshot = { card: string; now: string; graphify: boolean }
+type Snapshot = { card: string; now: string; graphify: boolean; graphHook: boolean }
 const TAG = /#[a-z][a-z0-9_-]*/g
 
 function fsOf($: Engine): Fs {
@@ -64,16 +67,32 @@ function fsOf($: Engine): Fs {
   }
 }
 
+// The nearest dir up from the session cwd that holds .brain/ (the cwd itself when none does): a Bash `cd` moves
+// the session cwd, and the brain must not get lost in a subdir or in .brain/ itself.
+let rootMemo: { cwd: string; root: string } | null = null
+async function rootOf($: Engine): Promise<string> {
+  const cwd = await $.session.cwd()
+  if (rootMemo?.cwd === cwd) return rootMemo.root
+  for (let dir = cwd; dir && dir !== '/'; dir = dir.slice(0, dir.lastIndexOf('/'))) {
+    if (await $.fs.exists(`${dir}/.brain/card`).catch(() => false)) {
+      rootMemo = { cwd, root: dir }
+      return dir
+    }
+  }
+  return cwd
+}
+
 async function brainOf($: Engine): Promise<Brain> {
-  return new Brain(fsOf($), `${await $.session.cwd()}/.brain`)
+  return new Brain(fsOf($), `${await rootOf($)}/.brain`)
 }
 
 async function readSnapshot($: Engine): Promise<Snapshot | null> {
-  const cwd = await $.session.cwd()
-  const brain = new Brain(fsOf($), `${cwd}/.brain`)
+  const root = await rootOf($)
+  const brain = new Brain(fsOf($), `${root}/.brain`)
   if (!(await brain.exists())) return null
-  const graphify = await $.fs.exists(`${cwd}/graphify-out/graph.json`).catch(() => false)
-  return { card: await brain.read('card'), now: await brain.read('now'), graphify }
+  const graphify = await $.fs.exists(`${root}/graphify-out/graph.json`).catch(() => false)
+  const graphHook = !graphify || /graphify/.test(await $.fs.read(`${root}/.git/hooks/post-commit`).then(String, () => ''))
+  return { card: await brain.read('card'), now: await brain.read('now'), graphify, graphHook }
 }
 
 async function attachTraps(
@@ -82,10 +101,11 @@ async function attachTraps(
   ran: { context?: readonly string[] },
   shown: Set<string>,
   heads: readonly string[] = [],
+  weak: readonly string[] = [],
 ): Promise<{ context?: readonly string[] }> {
   if (needles.length === 0) return ran
   const brain = await brainOf($)
-  const hits = matchTraps(await brain.traps(), await brain.aliases(), needles, heads)
+  const hits = matchTraps(await brain.traps(), await brain.aliases(), needles, heads, weak)
     .filter(t => !shown.has(t))
     .slice(0, 3)
   if (hits.length === 0) return ran
@@ -94,8 +114,8 @@ async function attachTraps(
 }
 
 async function relativeTo($: Engine, path: string): Promise<string> {
-  const cwd = await $.session.cwd()
-  return path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path
+  const root = await rootOf($)
+  return path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 }
 
 function agentText(ran: unknown): string {
@@ -205,7 +225,7 @@ export const register: Register = (on, options) => {
     snapshot = await readSnapshot($).catch(() => null)
     if (!snapshot) return next(e)
     const card = snapshot.card.trim()
-    const text = ['# Project brain (.brain/, brn notation)', card.startsWith(';brn') ? '' : KEY, protocol(snapshot.graphify), '## card', card, '## now', snapshot.now.trim()]
+    const text = ['# Project brain (.brain/, brn notation)', card.startsWith(';brn') ? '' : KEY, protocol(snapshot.graphify, snapshot.graphHook), '## card', card, '## now', snapshot.now.trim()]
       .filter(Boolean)
       .join('\n')
     return next({ ...e, context: [...(e.context ?? []), text] })
@@ -247,12 +267,13 @@ export const register: Register = (on, options) => {
     return attachTraps($, [rel.toLowerCase()], ran, shownTraps)
   })
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    if (/\.brain\//.test(e.command)) {
+    // `cd .brain`, `ls .brain`, `cat .brain/now`: brain upkeep, not risk.
+    if (/(^|[^\w-])\.brain(?![\w-])/.test(e.command)) {
       editsSinceNow = 0
       return withCaptured(await next(e))
     }
     const ran = await next(e)
-    const out = trapsAtRisk ? await attachTraps($, needlesFromCommand(e.command), ran, shownTraps, commandHeads(e.command)) : ran
+    const out = trapsAtRisk ? await attachTraps($, needlesFromCommand(e.command), ran, shownTraps, commandHeads(e.command), proseWords(e.command)) : ran
     return withCaptured(out)
   })
 

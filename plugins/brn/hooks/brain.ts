@@ -187,6 +187,18 @@ export function needlesFromCommand(command: string): string[] {
   )
 }
 
+// Words that occur only inside a quoted phrase (`-m "fix prompt.submit"`, `query "who calls X"`): prose the
+// command carries, not what it touches, so they count as plain words even when they look like identifiers.
+export function proseWords(command: string): string[] {
+  const quoted = command.match(/"(?:[^"\\\n]|\\.)*"|'[^'\n]*'/g) ?? []
+  const prose = quoted.filter(q => /\s/.test(q.slice(1, -1)))
+  if (prose.length === 0) return []
+  let rest = command
+  for (const q of prose) rest = rest.replace(q, ' ')
+  const outside = new Set(needlesFromCommand(rest))
+  return needlesFromCommand(prose.join(' ')).filter(w => !outside.has(w) && !w.includes('/'))
+}
+
 // Runners whose real program is the next word: `python3 -m unittest`, `git push`, `npx eslint`, `go test`.
 const RUNNERS = new Set(['python', 'python3', 'node', 'uv', 'uvx', 'npx', 'bunx', 'bun', 'npm', 'pnpm', 'yarn', 'git', 'go', 'cargo', 'docker', 'kubectl'])
 
@@ -214,6 +226,7 @@ export function matchTraps(
   aliases: Record<string, string>,
   needles: readonly string[],
   heads: readonly string[] = [],
+  weak: readonly string[] = [],
 ): string[] {
   if (needles.length === 0 || traps.length === 0) return []
   // Tags and dates are metadata, not content; match whole words or path tails only.
@@ -230,7 +243,7 @@ export function matchTraps(
     })
     return out
   }
-  const strong = (n: string) => /[./_0-9-]/.test(n) || heads.includes(n)
+  const strong = (n: string) => !weak.includes(n) && (/[./_0-9-]/.test(n) || heads.includes(n))
   // A needle that hits many traps does not discriminate (e.g. a word every trap shares): drop it.
   const limit = Math.max(2, Math.ceil(traps.length * 0.2))
   const score = new Map<number, number>()

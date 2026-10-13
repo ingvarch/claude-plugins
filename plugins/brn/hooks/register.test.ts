@@ -9,9 +9,9 @@ const EDIT = { result: { filePath: 'x', oldString: 'x', newString: 'y', original
 const turn = { reason: 'answer' as const, answer: 'done', durationMs: 10, isAborted: false, turnId: 't1' }
 
 // A brain on a fake filesystem. Returns the file map so tests can inspect writes.
-function brainFs(on: On, files: Record<string, string> = {}) {
+function brainFs(on: On, files: Record<string, string> = {}, cwd = '/proj') {
   const fs: Record<string, string> = { '/proj/.brain/card': CARD, '/proj/.brain/now': NOW, '/proj/.brain/traps': TRAPS, '/proj/.brain/facts': '', '/proj/.brain/dec': '', '/proj/.brain/log': '', ...files }
-  on('session.cwd', () => ({ value: '/proj' }))
+  on('session.cwd', () => ({ value: cwd }))
   on('fs.exists', (_, e) => ({ value: e.path in fs }))
   on('fs.read', (_, e) => {
     if (!(e.path in fs)) throw new Error(`ENOENT ${e.path}`)
@@ -105,6 +105,53 @@ test('one plain word from code does not pick a trap; a program, identifier or tw
   expect(r.context?.join('\n')).toContain('~1 test fixtures')
   r = await $.tool.call({ tool: 'Bash', command: 'echo "read stdin in the script"' })
   expect(r.context?.join('\n')).toContain('~2 claude -p')
+})
+
+test('identifiers inside a quoted phrase are prose, not what the command touches', async ($, on) => {
+  const traps = '~1 prompt.submit under command.run is not delivered to test hooks #plugin\n'
+  brainFs(on, { '/proj/.brain/traps': traps })
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  let r = await $.tool.call({ tool: 'Bash', command: 'graphify query "how does prompt.submit inject card and now"' })
+  expect(r.context ?? []).toEqual([])
+  r = await $.tool.call({ tool: 'Bash', command: 'git commit -m "fix: attach card via prompt.submit"' })
+  expect(r.context ?? []).toEqual([])
+  r = await $.tool.call({ tool: 'Bash', command: "grep -rn 'prompt.submit' hooks/" })
+  expect(r.context?.join('\n')).toContain('~1 prompt.submit')
+})
+
+test('a Bash command on .brain itself gets no traps, even without a trailing slash', async ($, on) => {
+  const traps = '~1 the .brain dir is ignored globally, not in the repo #repo\n'
+  brainFs(on, { '/proj/.brain/traps': traps })
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  const r = await $.tool.call({ tool: 'Bash', command: 'cd /proj/.brain && sed -n 3,4p facts' })
+  expect(r.context ?? []).toEqual([])
+})
+
+test('a cwd inside the project or inside .brain still finds the brain', async ($, on) => {
+  const fs = brainFs(on, {}, '/proj/.brain')
+  on('tool.call', () => EDIT)
+  const r = await $.tool.call({ tool: 'mcp__brn__brain', op: 'add', sigil: '.', text: 'found from inside .brain #repo' } as never)
+  expect(String(r.result)).toBe('.2 -> .brain/facts')
+  expect(fs['/proj/.brain/facts']).toBe('.2 found from inside .brain #repo\n')
+  const e = await $.tool.call({ tool: 'Edit', file_path: '/proj/internal/users/list.go', old_string: 'a', new_string: 'b' })
+  expect(e.context?.join('\n')).toContain('~2 golangci')
+})
+
+test('a graph without a post-commit hook asks for graphify hook install once', async ($, on) => {
+  brainFs(on, { '/proj/graphify-out/graph.json': '{}' })
+  let ctx = ''
+  on('prompt.submit', (_, e) => ((ctx = (e.context ?? []).join('\n')), { text: e.text }))
+  await $.prompt.submit({ text: 'hi' })
+  expect(ctx).toContain('graphify hook install')
+})
+
+test('a graph rebuilt on commit needs no hint', async ($, on) => {
+  brainFs(on, { '/proj/graphify-out/graph.json': '{}', '/proj/.git/hooks/post-commit': '#!/bin/sh\ngraphify update .\n' })
+  let ctx = ''
+  on('prompt.submit', (_, e) => ((ctx = (e.context ?? []).join('\n')), { text: e.text }))
+  await $.prompt.submit({ text: 'hi' })
+  expect(ctx).toContain('graphify query')
+  expect(ctx).not.toContain('graphify hook install')
 })
 
 test('a runner hands the program role to its next word: python3 -m unittest, git push', async ($, on) => {
