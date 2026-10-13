@@ -187,11 +187,13 @@ export function needlesFromCommand(command: string): string[] {
   )
 }
 
-// Words that occur only inside a quoted phrase (`-m "fix prompt.submit"`, `query "who calls X"`): prose the
-// command carries, not what it touches, so they count as plain words even when they look like identifiers.
+// Words that occur only inside a quoted phrase or a heredoc (`-m "fix prompt.submit"`, `query "who calls X"`,
+// `commit -F - <<EOF`): text the command carries, not what it touches, so they count as plain words even when
+// they look like identifiers.
 export function proseWords(command: string): string[] {
+  const heredocs = Array.from(command.matchAll(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n\s*\2(?=\s|$)/g), m => m[3])
   const quoted = command.match(/"(?:[^"\\\n]|\\.)*"|'[^'\n]*'/g) ?? []
-  const prose = quoted.filter(q => /\s/.test(q.slice(1, -1)))
+  const prose = [...heredocs, ...quoted.filter(q => /\s/.test(q.slice(1, -1)))]
   if (prose.length === 0) return []
   let rest = command
   for (const q of prose) rest = rest.replace(q, ' ')

@@ -115,8 +115,17 @@ test('identifiers inside a quoted phrase are prose, not what the command touches
   expect(r.context ?? []).toEqual([])
   r = await $.tool.call({ tool: 'Bash', command: 'git commit -m "fix: attach card via prompt.submit"' })
   expect(r.context ?? []).toEqual([])
+  r = await $.tool.call({ tool: 'Bash', command: "git commit -q -F - <<'EOF'\nfix: card rides prompt.submit\nEOF" })
+  expect(r.context ?? []).toEqual([])
   r = await $.tool.call({ tool: 'Bash', command: "grep -rn 'prompt.submit' hooks/" })
   expect(r.context?.join('\n')).toContain('~1 prompt.submit')
+})
+
+test('a path inside a heredoc script still picks its trap', async ($, on) => {
+  brainFs(on)
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  const r = await $.tool.call({ tool: 'Bash', command: "python3 - <<'EOF'\nprint(open('internal/users/list.go').read())\nEOF" })
+  expect(r.context?.join('\n')).toContain('~2 golangci')
 })
 
 test('a Bash command on .brain itself gets no traps, even without a trailing slash', async ($, on) => {
