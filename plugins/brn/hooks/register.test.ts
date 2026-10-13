@@ -109,6 +109,18 @@ test('one plain word from code does not pick a trap; a program, identifier or tw
   expect(r.context?.join('\n')).toContain('~2 claude -p')
 })
 
+test('a runner hands the program role to its next word: python3 -m unittest, git push', async ($, on) => {
+  const traps = '~1 unittest from root w/o -s src finds 0 tests #test\n~2 push to main needs a rebase first #git\n~3 json output is unordered #py\n'
+  brainFs(on, { '/proj/.brain/traps': traps })
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  let r = await $.tool.call({ tool: 'Bash', command: 'python3 -m unittest' })
+  expect(r.context?.join('\n')).toContain('~1 unittest')
+  r = await $.tool.call({ tool: 'Bash', command: 'git push origin main' })
+  expect(r.context?.join('\n')).toContain('~2 push')
+  r = await $.tool.call({ tool: 'Bash', command: 'python3 -c "import json; print(json)"' })
+  expect(r.context ?? []).toEqual([])
+})
+
 test('Agent results with brn record lines are appended as unverified, deduplicated', async ($, on) => {
   const fs = brainFs(on)
   const report = 'Found it.\n. redis only for rate limit, keys rl:{ip} #api\n~ tests hang if REDIS_URL unset -> export it #test\n. config env-only #infra\n- not a record\n'

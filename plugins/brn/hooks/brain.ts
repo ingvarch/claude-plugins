@@ -187,13 +187,22 @@ export function needlesFromCommand(command: string): string[] {
   )
 }
 
+// Runners whose real program is the next word: `python3 -m unittest`, `git push`, `npx eslint`, `go test`.
+const RUNNERS = new Set(['python', 'python3', 'node', 'uv', 'uvx', 'npx', 'bunx', 'bun', 'npm', 'pnpm', 'yarn', 'git', 'go', 'cargo', 'docker', 'kubectl'])
+
 // The program each command segment runs (`goose`, `make`, `golangci-lint`): a strong needle even as a plain word.
 export function commandHeads(command: string): string[] {
   const heads = new Set<string>()
   for (const seg of command.toLowerCase().split(/\n|\||;|&&|\$\(|`/)) {
-    const m = seg.trim().replace(/^(?:[a-z_][a-z0-9_]*=\S*\s+|sudo\s+|env\s+|time\s+|exec\s+)*/, '').match(/^([a-z0-9][a-z0-9_.-]*)\s*(.?)/)
+    const words = seg.trim().replace(/^(?:[a-z_][a-z0-9_]*=\S*\s+|sudo\s+|env\s+|time\s+|exec\s+)*/, '').split(/\s+/)
+    const m = words[0]?.match(/^([a-z0-9][a-z0-9_.-]*)(.?)/)
     // `x = ...` and `f(...)` are code inside a heredoc or -c string, not a program.
-    if (m && m[2] !== '=' && m[2] !== '(' && !STOP.has(m[1])) heads.add(m[1])
+    if (!m || m[2] === '(' || words[1] === '=' || m[2] === '=') continue
+    if (!STOP.has(m[1])) heads.add(m[1])
+    if (!RUNNERS.has(m[1])) continue
+    // The first word after the runner's flags (`-m` included); a quoted `-c` script or a path ends the search.
+    const sub = words.slice(1).find(w => !w.startsWith('-'))
+    if (sub && /^[a-z0-9][a-z0-9_.-]*$/.test(sub) && !STOP.has(sub)) heads.add(sub)
   }
   return Array.from(heads)
 }
