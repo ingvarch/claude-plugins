@@ -1,7 +1,16 @@
 #!/bin/sh
 # brn — helper for .brain/ (see SPEC.md). POSIX sh, no deps.
 set -e
-B="${BRAIN_DIR:-.brain}"
+# The nearest .brain/ up from $PWD, as the plugin's rootOf finds it; ./.brain when there is none.
+nearest() {
+  d=$PWD
+  while [ -n "$d" ] && [ "$d" != / ]; do
+    [ -f "$d/.brain/card" ] && { echo "$d/.brain"; return; }
+    d=${d%/*}
+  done
+  echo .brain
+}
+B="${BRAIN_DIR:-$(nearest)}"
 KEY=';brn1 .fact !dec ~trap ?open >goal =state -next xblock +done @path $cmd &who %num ^ref ::why ->then <supersedes ?=unsure #tag @yymmdd'
 today() { date +%y%m%d; }
 need() { [ -d "$B" ] || { echo "no $B (run: brn init)" >&2; exit 1; }; }

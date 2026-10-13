@@ -42,7 +42,7 @@ Advanced (for rare cases, Claude uses `bin/brn` directly itself): `/brn slice #t
 - `SPEC.md` — format specification and protocol (for agents).
 - `hooks/brain.ts` — brain logic in TypeScript: id, add, log, slice, brief, lint, trap matching. No engine access, works over a filesystem interface.
 - `hooks/register.ts` — the plugin module: hooks, the `/brn` command, the `mcp__brn__brain` tool. Tests in `hooks/register.test.ts`.
-- `bin/brn` — the same operations as a POSIX sh script for humans, CI and other agents. The plugin doesn't depend on it.
+- `bin/brn` — the same operations as a POSIX sh script for humans, CI and other agents. Of the plugin, only `/brn:setup` runs it, for `init`. Like the plugin, it uses the nearest `.brain/` up from the current dir. Tests in `test/brn.test.sh`.
 - `commands/setup.md`, `commands/end.md` — the `/brn:setup` and `/brn:end` prompt commands.
 - `skills/brn-notation/SKILL.md` — a short grammar, loaded by the agent on demand.
 - `example/.brain/` — an example of a filled-in project brain.
@@ -154,4 +154,4 @@ To check it's active: `/brn` prints `graphify detected`.
 To see the effect, run the same structural question ("which handlers touch the users table?") in two fresh
 sessions, once with `graphify-out/` renamed away, and compare the number of tool calls and `/cost`.
 
-Development: `claude plugin validate .` and `claude plugin test .`
+Development: `claude plugin validate .`, `claude plugin test .` and `sh test/brn.test.sh`
