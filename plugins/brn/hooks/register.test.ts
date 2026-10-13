@@ -85,6 +85,16 @@ test('Bash gets matching traps once; Edit matches traps through path aliases', a
   expect(r.context?.join('\n')).toContain('~2 golangci')
 })
 
+test('tags and words shared by many traps do not trigger traps', async ($, on) => {
+  const many = Array.from({ length: 10 }, (_, i) => `~${i + 1} plugin quirk number ${i} about thing${i} #plugin #test`).join('\n') + '\n'
+  brainFs(on, { '/proj/.brain/traps': many })
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  let r = await $.tool.call({ tool: 'Bash', command: 'claude plugin test plugins/x' })
+  expect(r.context ?? []).toEqual([])
+  r = await $.tool.call({ tool: 'Bash', command: 'make thing7' })
+  expect(r.context?.join('\n')).toContain('~8 plugin quirk')
+})
+
 test('Agent results with brn record lines are appended as unverified, deduplicated', async ($, on) => {
   const fs = brainFs(on)
   const report = 'Found it.\n. redis only for rate limit, keys rl:{ip} #api\n~ tests hang if REDIS_URL unset -> export it #test\n. config env-only #infra\n- not a record\n'

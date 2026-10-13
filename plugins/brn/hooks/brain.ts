@@ -171,7 +171,8 @@ export function expandAliases(line: string, aliases: Record<string, string>): st
 const STOP = new Set([
   'the', 'and', 'for', 'with', 'from', 'then', 'echo', 'cat', 'sed', 'awk', 'grep', 'head', 'tail', 'sort', 'uniq', 'true',
   'false', 'null', 'run', 'exec', 'xargs', 'sudo', 'pwd', 'which', 'env', 'export', 'printf', 'find', 'cut', 'mkdir',
-  'touch', 'tee', 'dev', 'bash', 'bin', 'usr', 'tmp', 'var', 'opt', 'python3', 'python',
+  'touch', 'tee', 'dev', 'bash', 'bin', 'usr', 'tmp', 'var', 'opt', 'python3', 'python', 'git', 'add', 'commit', 'status',
+  'diff', 'log', 'show', 'users', 'igor', 'repos', 'home', 'claude', 'description', 'text', 'file', 'files', 'path',
 ])
 
 export function needlesFromCommand(command: string): string[] {
@@ -187,11 +188,31 @@ export function needlesFromCommand(command: string): string[] {
 }
 
 export function matchTraps(traps: readonly string[], aliases: Record<string, string>, needles: readonly string[]): string[] {
-  if (needles.length === 0) return []
-  return traps.filter(t => {
-    const hay = expandAliases(t, aliases).toLowerCase()
-    return needles.some(n => hay.includes(n))
-  })
+  if (needles.length === 0 || traps.length === 0) return []
+  // Tags and dates are metadata, not content; match whole words or path tails only.
+  const hays = traps.map(t => expandAliases(t, aliases).replace(/#[a-z][\w-]*/gi, ' ').replace(/@\d{6}/g, ' ').toLowerCase())
+  const words = hays.map(h => new Set(h.split(/[^a-z0-9_./-]+/).map(w => w.replace(/^[./-]+|[./-]+$/g, ''))))
+  const hitBy = (n: string): number[] => {
+    const out: number[] = []
+    hays.forEach((h, i) => {
+      if (n.includes('/')) {
+        const segs = n.split('/')
+        const tails = [n, ...segs.map((_, k) => segs.slice(k).join('/')).filter(t => t.includes('/') || /\.[a-z0-9]+$/.test(t))]
+        if (tails.some(t => t.length >= 4 && h.includes(t))) out.push(i)
+      } else if (words[i].has(n)) out.push(i)
+    })
+    return out
+  }
+  // A needle that hits many traps does not discriminate (e.g. a word every trap shares): drop it.
+  const limit = Math.max(2, Math.ceil(traps.length * 0.2))
+  const picked = new Set<number>()
+  for (const n of needles) {
+    if (n.length < 4) continue
+    const hits = hitBy(n)
+    if (hits.length > limit) continue
+    for (const i of hits) picked.add(i)
+  }
+  return traps.filter((_, i) => picked.has(i))
 }
 
 export const RECORD = /^([.!~?]) (\S.*)$/

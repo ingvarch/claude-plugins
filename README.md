@@ -1,26 +1,26 @@
 # claude-plugins
 
-Плагины Claude Code от ingvarch. Репозиторий — marketplace, каждый плагин лежит в `plugins/<name>/`.
+Claude Code plugins by ingvarch. The repository is a marketplace; each plugin lives in `plugins/<name>/`.
 
-## Установка
+## Installation
 
 ```
 /plugin marketplace add ingvarch/claude-plugins
 /plugin install brn@ingvarch
 ```
 
-Или одной строкой: `/plugin install brn --marketplace ingvarch/claude-plugins`.
+Or in one line: `/plugin install brn --marketplace ingvarch/claude-plugins`.
 
-## Плагины
+## Plugins
 
-| Плагин | Что делает |
+| Plugin | What it does |
 |---|---|
-| [brn](plugins/brn) | Мозг проекта в нотации brn: `/brn:setup` один раз, дальше handover, ловушки и брифы сабагентам автоматически. Дружит с graphify. |
+| [brn](plugins/brn) | Project brain in brn notation: `/brn:setup` once, then handover, traps and subagent briefs happen automatically. Works with graphify. |
 
-## Новый плагин
+## Adding a plugin
 
-1. `plugins/<name>/.claude-plugin/plugin.json` и остальное содержимое плагина.
-2. Строка в `plugins` в `.claude-plugin/marketplace.json` с `"source": "./plugins/<name>"`.
-3. `claude plugin validate .` из корня и `claude plugin test plugins/<name>`.
+1. `plugins/<name>/.claude-plugin/plugin.json` and the rest of the plugin's contents.
+2. An entry in `plugins` in `.claude-plugin/marketplace.json` with `"source": "./plugins/<name>"`.
+3. `claude plugin validate .` from the root and `claude plugin test plugins/<name>`.
 
-Локальная разработка без установки: `claude --plugin-dir plugins/<name>`.
+Local development without installing: `claude --plugin-dir plugins/<name>`.
