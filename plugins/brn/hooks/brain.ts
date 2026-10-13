@@ -103,7 +103,7 @@ export class Brain {
 
   async aliases(): Promise<Record<string, string>> {
     const out: Record<string, string> = {}
-    for (const m of (await this.read('card')).matchAll(ALIAS)) out[m[1]] = m[2]
+    for (const m of (await this.read('card')).matchAll(ALIAS)) out[m[1]!] = m[2]!
     return out
   }
 
@@ -117,7 +117,7 @@ export class Brain {
     for (const text of Object.values(all))
       for (const line of text.split('\n')) {
         const m = line.match(/^[.!~?]\d* (.*)$/)
-        if (m) out.add(normalize(m[1]))
+        if (m) out.add(normalize(m[1]!))
       }
     return out
   }
@@ -147,7 +147,8 @@ export class Brain {
     const d = all.now.match(/@(\d{6})/)
     if (!d) problems.push("now: no @yymmdd on '=' line")
     else {
-      const at = new Date(2000 + Number(d[1].slice(0, 2)), Number(d[1].slice(2, 4)) - 1, Number(d[1].slice(4, 6)))
+      const ymd = d[1]!
+      const at = new Date(2000 + Number(ymd.slice(0, 2)), Number(ymd.slice(2, 4)) - 1, Number(ymd.slice(4, 6)))
       const age = Math.floor((now.getTime() - at.getTime()) / 86_400_000)
       if (age > 7) problems.push(`now is ${age}d old: re-verify first '-'`)
     }
@@ -191,7 +192,7 @@ export function needlesFromCommand(command: string): string[] {
 // `commit -F - <<EOF`): text the command carries, not what it touches, so they pick no trap even when they
 // look like identifiers.
 export function proseWords(command: string): string[] {
-  const heredocs = Array.from(command.matchAll(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n\s*\2(?=\s|$)/g), m => m[3])
+  const heredocs = Array.from(command.matchAll(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n\s*\2(?=\s|$)/g), m => m[3]!)
   const quoted = command.match(/"(?:[^"\\\n]|\\.)*"|'[^'\n]*'/g) ?? []
   const prose = [...heredocs, ...quoted.filter(q => /\s/.test(q.slice(1, -1)))]
   if (prose.length === 0) return []
@@ -212,8 +213,9 @@ export function commandHeads(command: string): string[] {
     const m = words[0]?.match(/^([a-z0-9][a-z0-9_.-]*)(.?)/)
     // `x = ...` and `f(...)` are code inside a heredoc or -c string, not a program.
     if (!m || m[2] === '(' || words[1] === '=' || m[2] === '=') continue
-    if (!STOP.has(m[1])) heads.add(m[1])
-    if (!RUNNERS.has(m[1])) continue
+    const head = m[1]!
+    if (!STOP.has(head)) heads.add(head)
+    if (!RUNNERS.has(head)) continue
     // The first word after the runner's flags (`-m` included); a quoted `-c` script or a path ends the search.
     const sub = words.slice(1).find(w => !w.startsWith('-'))
     if (sub && /^[a-z0-9][a-z0-9_.-]*$/.test(sub) && !STOP.has(sub)) heads.add(sub)
@@ -241,7 +243,7 @@ export function matchTraps(
         const segs = n.split('/')
         const tails = [n, ...segs.map((_, k) => segs.slice(k).join('/')).filter(t => t.includes('/') || /\.[a-z0-9]+$/.test(t))]
         if (tails.some(t => t.length >= 4 && h.includes(t))) out.push(i)
-      } else if (words[i].has(n)) out.push(i)
+      } else if (words[i]!.has(n)) out.push(i)
     })
     return out
   }
@@ -264,7 +266,7 @@ export function parseRecords(text: string): { sigil: Sigil; body: string }[] {
   const out: { sigil: Sigil; body: string }[] = []
   for (const raw of text.split('\n')) {
     const m = raw.trim().match(RECORD)
-    if (m && isSigil(m[1])) out.push({ sigil: m[1], body: m[2] })
+    if (m && isSigil(m[1]!)) out.push({ sigil: m[1] as Sigil, body: m[2]! })
   }
   return out.slice(0, 15)
 }

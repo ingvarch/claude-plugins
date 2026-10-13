@@ -1,4 +1,4 @@
-import type { Engine, Register } from 'claude-code'
+import type { EngineInterface as Engine, Register } from 'claude-code'
 import { Brain, KEY, commandHeads, isSigil, matchTraps, needlesFromCommand, normalize, parseRecords, proseWords, type Fs, type Sigil } from './brain'
 
 const TOOL = 'mcp__brn__brain'
@@ -72,7 +72,8 @@ function fsOf($: Engine): Fs {
 let rootMemo: { cwd: string; root: string } | null = null
 async function rootOf($: Engine): Promise<string> {
   const cwd = await $.session.cwd()
-  if (rootMemo?.cwd === cwd) return rootMemo.root
+  const memo = rootMemo
+  if (memo && memo.cwd === cwd) return memo.root
   for (let dir = cwd; dir && dir !== '/'; dir = dir.slice(0, dir.lastIndexOf('/'))) {
     if (await $.fs.exists(`${dir}/.brain/card`).catch(() => false)) {
       rootMemo = { cwd, root: dir }
@@ -95,22 +96,22 @@ async function readSnapshot($: Engine): Promise<Snapshot | null> {
   return { card: await brain.read('card'), now: await brain.read('now'), graphify, graphHook }
 }
 
-async function attachTraps(
+async function attachTraps<R extends { deny?: string; context?: readonly string[] }>(
   $: Engine,
   needles: readonly string[],
-  ran: { context?: readonly string[] },
+  ran: R,
   shown: Set<string>,
   heads: readonly string[] = [],
   weak: readonly string[] = [],
-): Promise<{ context?: readonly string[] }> {
-  if (needles.length === 0) return ran
+): Promise<R> {
+  if (needles.length === 0 || ran.deny !== undefined) return ran
   const brain = await brainOf($)
   const hits = matchTraps(await brain.traps(), await brain.aliases(), needles, heads, weak)
     .filter(t => !shown.has(t))
     .slice(0, 3)
   if (hits.length === 0) return ran
   for (const h of hits) shown.add(h)
-  return { ...ran, context: [...(ran.context ?? []), `brn traps for this call:\n${hits.join('\n')}`] }
+  return { ...ran, context: [...(ran.context ?? []), `brn traps for this call:\n${hits.join('\n')}`] } as R
 }
 
 async function relativeTo($: Engine, path: string): Promise<string> {
@@ -137,7 +138,7 @@ async function appendSubagentRecords($: Engine, answer: string): Promise<string[
     known.add(normalize(body))
     const text = /\?\??\s*$/.test(body) ? body : `${body} ?`
     const out = await brain.add(sigil as Sigil, text).catch(() => null)
-    if (out) added.push(out.split(' ')[0])
+    if (out) added.push(out.split(' ')[0]!)
   }
   return added
 }
@@ -303,8 +304,10 @@ export const register: Register = (on, options) => {
 
   // A subagent that reports through SubagentHandback ends on that tool call, so its report is the call's
   // message, not its final answer.
-  on('tool.call', { tool: 'SubagentHandback' } as never, async ($: Engine, e: { message?: unknown }, next: (e: unknown) => Promise<{ context?: readonly string[] }>) => {
-    if (captureRecords && typeof e.message === 'string') captured.push(...(await appendSubagentRecords($, e.message).catch(() => [])))
+  // Not in the typed tool list, hence the casts.
+  on('tool.call', { tool: 'SubagentHandback' } as never, async ($, e, next) => {
+    const message = (e as { message?: unknown }).message
+    if (captureRecords && typeof message === 'string') captured.push(...(await appendSubagentRecords($, message).catch(() => [])))
     return next(e)
   })
 

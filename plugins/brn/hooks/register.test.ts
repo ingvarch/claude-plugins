@@ -1,6 +1,5 @@
+import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
-
-type On = Parameters<Parameters<typeof test>[1] extends (...a: infer A) => unknown ? (...a: A) => unknown : never>[1]
 
 const CARD = ';brn1 .fact !dec ~trap ?open\n=demo go1.24 api :: ledger\n@s=internal/\n.1 config env-only #infra\n'
 const NOW = '> ship v2\n= tests red @261013\n- fix cursor list.go:71\n'
@@ -15,7 +14,7 @@ function brainFs(on: On, files: Record<string, string> = {}, cwd = '/proj') {
   on('fs.exists', (_, e) => ({ value: e.path in fs }))
   on('fs.read', (_, e) => {
     if (!(e.path in fs)) throw new Error(`ENOENT ${e.path}`)
-    return { value: fs[e.path] }
+    return { value: fs[e.path]! }
   })
   on('fs.write', (_, e) => ((fs[e.path] = e.text), { value: undefined }))
   return fs
@@ -25,14 +24,14 @@ test('the first prompt carries card+now as hidden context, later prompts do not'
   const fs = brainFs(on)
   const seen: (readonly string[] | undefined)[] = []
   on('prompt.submit', (_, e) => (seen.push(e.context), { text: e.text, context: e.context }))
-  await $.prompt.submit({ text: 'hi' })
+  await $.prompt.submit({ text: 'hi' } as never)
   const ctx = seen[0]?.join('\n') ?? ''
   expect(ctx).toContain('# Project brain')
   expect(ctx).toContain('=demo go1.24 api')
   expect(ctx).toContain('- fix cursor list.go:71')
   expect(ctx).not.toContain('graphify')
   fs['/proj/.brain/now'] = '> changed\n= later @261014\n'
-  await $.prompt.submit({ text: 'again' })
+  await $.prompt.submit({ text: 'again' } as never)
   expect(seen[1] ?? []).toEqual([])
 })
 test('session.compact re-attaches fresh card+now and asks the summary to keep handover state', async ($, on) => {
@@ -41,12 +40,12 @@ test('session.compact re-attaches fresh card+now and asks the summary to keep ha
   on('prompt.submit', (_, e) => (seen.push(e.context), { text: e.text, context: e.context }))
   let instructions = ''
   on('session.compact', (_, e) => ((instructions = e.instructions ?? ''), { messages: e.messages }))
-  await $.prompt.submit({ text: 'hi' })
+  await $.prompt.submit({ text: 'hi' } as never)
   fs['/proj/.brain/now'] = '> changed\n= later @261014\n'
   await $.session.compact({ trigger: 'manual', instructions: 'focus on tests', messages: [{ role: 'user', text: 'hi', toolUses: [] }] } as never)
   expect(instructions).toContain('focus on tests')
   expect(instructions).toContain('brn handover state')
-  await $.prompt.submit({ text: 'after' })
+  await $.prompt.submit({ text: 'after' } as never)
   expect(seen[1]?.join('\n')).toContain('> changed')
 })
 test('graphify-out/graph.json switches on the graph protocol and the subagent hint', async ($, on) => {
@@ -55,9 +54,9 @@ test('graphify-out/graph.json switches on the graph protocol and the subagent hi
   on('prompt.submit', (_, e) => ((ctx = (e.context ?? []).join('\n')), { text: e.text }))
   let seen = ''
   on('agent.spawn', (_, e) => ((seen = e.prompt), { model: 'claude-haiku-5-5' }))
-  await $.prompt.submit({ text: 'hi' })
+  await $.prompt.submit({ text: 'hi' } as never)
   expect(ctx).toContain('graphify query')
-  await $.agent.spawn({ subagentType: 'Explore', prompt: 'find how #db migrations run', description: 'db' })
+  await $.agent.spawn({ subagentType: 'Explore', prompt: 'find how #db migrations run', description: 'db' } as never)
   expect(seen.startsWith(';brn1')).toBe(true)
   expect(seen).toContain('~1 goose')
   expect(seen).toContain('graphify path A B')
@@ -68,7 +67,7 @@ test('without .brain the prompt goes through untouched', async ($, on) => {
   on('fs.exists', () => ({ value: false }))
   let ctx: readonly string[] | undefined
   on('prompt.submit', (_, e) => ((ctx = e.context), { text: e.text }))
-  await $.prompt.submit({ text: 'hi' })
+  await $.prompt.submit({ text: 'hi' } as never)
   expect(ctx ?? []).toEqual([])
 })
 test('Bash gets matching traps once; Edit matches traps through path aliases', async ($, on) => {
@@ -79,8 +78,8 @@ test('Bash gets matching traps once; Edit matches traps through path aliases', a
   expect(r.context?.join('\n')).not.toContain('~2')
   r = await $.tool.call({ tool: 'Bash', command: 'goose status' })
   expect(r.context ?? []).toEqual([])
-  r = await $.tool.call({ tool: 'Edit', file_path: '/proj/internal/users/list.go', old_string: 'a', new_string: 'b' })
-  expect(r.context?.join('\n')).toContain('~2 golangci')
+  const edit = await $.tool.call({ tool: 'Edit', file_path: '/proj/internal/users/list.go', old_string: 'a', new_string: 'b' })
+  expect(edit.context?.join('\n')).toContain('~2 golangci')
 })
 
 test('tags and words shared by many traps do not trigger traps', async ($, on) => {
@@ -150,7 +149,7 @@ test('a graph without a post-commit hook asks for graphify hook install once', a
   brainFs(on, { '/proj/graphify-out/graph.json': '{}' })
   let ctx = ''
   on('prompt.submit', (_, e) => ((ctx = (e.context ?? []).join('\n')), { text: e.text }))
-  await $.prompt.submit({ text: 'hi' })
+  await $.prompt.submit({ text: 'hi' } as never)
   expect(ctx).toContain('graphify hook install')
 })
 
@@ -158,7 +157,7 @@ test('a graph rebuilt on commit needs no hint', async ($, on) => {
   brainFs(on, { '/proj/graphify-out/graph.json': '{}', '/proj/.git/hooks/post-commit': '#!/bin/sh\ngraphify update .\n' })
   let ctx = ''
   on('prompt.submit', (_, e) => ((ctx = (e.context ?? []).join('\n')), { text: e.text }))
-  await $.prompt.submit({ text: 'hi' })
+  await $.prompt.submit({ text: 'hi' } as never)
   expect(ctx).toContain('graphify query')
   expect(ctx).not.toContain('graphify hook install')
 })
@@ -232,7 +231,7 @@ test('turn.complete after edits submits the brain update once, naming the files'
   on('prompt.submit', (_, e) => (submitted.push(e.text), { text: e.text }))
   on('turn.complete', () => ({ text: 'done' }))
   // The session's first prompt (it carries the brain); the handover prompt is a later one.
-  await $.prompt.submit({ text: 'start' })
+  await $.prompt.submit({ text: 'start' } as never)
   submitted.length = 0
   await $.turn.complete(turn)
   expect(submitted.length).toBe(0)
@@ -250,7 +249,7 @@ test('turn.complete ignores aborted turns and respects minEdits', { options: { m
   let n = 0
   on('prompt.submit', (_, e) => (n++, { text: e.text }))
   on('turn.complete', () => ({ text: 'done' }))
-  await $.prompt.submit({ text: 'start' })
+  await $.prompt.submit({ text: 'start' } as never)
   n = 0
   await $.tool.call({ tool: 'Edit', file_path: '/proj/a.go', old_string: 'x', new_string: 'y' })
   await $.turn.complete({ ...turn, reason: 'aborted', isAborted: true })
@@ -267,7 +266,7 @@ test('/brn setup creates the skeleton and asks Claude to fill it', async ($, on)
   // The fill prompt goes out through $.prompt.submit; the live engine runs it
   // (verified headless), the test kit does not deliver a submit raised under command.run.
   on('prompt.submit', (_, e) => ({ text: e.text }))
-  const r = await $.command.run({ command: 'brn', args: 'setup' })
+  const r = await $.command.run({ command: 'brn', args: 'setup' } as never)
   expect(r.text).toContain('created /proj/.brain/')
   expect(fs['/proj/.brain/card']?.startsWith(';brn1')).toBe(true)
   expect(fs['/proj/.brain/card']).toContain('=proj <stack>')
@@ -275,7 +274,7 @@ test('/brn setup creates the skeleton and asks Claude to fill it', async ($, on)
 
 test('/brn with no args prints status and help', async ($, on) => {
   brainFs(on)
-  const r = await $.command.run({ command: 'brn', args: '' })
+  const r = await $.command.run({ command: 'brn', args: '' } as never)
   expect(r.text).toContain('.brain/ present')
   expect(r.text).toContain('graphify absent')
   expect(r.text).toContain('/brn:setup')
@@ -285,15 +284,15 @@ test('session.start registers the tool and adds .brain/ to the global git exclud
   on('session.cwd', () => ({ value: '/proj' }))
   on('fs.exists', () => ({ value: false }))
   on('env.get', () => ({ value: '/home/u' }))
-  on('command.register', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'brn' } }))
   const tools: string[] = []
   on('tool.register', (_, e) => (tools.push(e.name), { value: { tool: `mcp__brn__${e.name}` } }))
   const argvs: string[][] = []
-  on('process.run', (_, e) => (argvs.push([...e.argv]), { value: { exitCode: e.argv.includes('--get') ? 1 : 0, stdout: '', stderr: '' } }))
+  on('process.run', (_, e) => (argvs.push([...e.argv]), { value: { exitCode: e.argv.includes('--get') ? 1 : 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   const files: Record<string, string> = {}
   on('fs.read', (_, e) => {
     if (!(e.path in files)) throw new Error('ENOENT')
-    return { value: files[e.path] }
+    return { value: files[e.path]! }
   })
   on('fs.write', (_, e) => ((files[e.path] = e.text), { value: undefined }))
   on('session.start', () => ({ cwd: '/proj' }))
