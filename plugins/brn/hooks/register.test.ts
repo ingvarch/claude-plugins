@@ -120,6 +120,13 @@ test('identifiers inside a quoted phrase are prose, not what the command touches
   expect(r.context?.join('\n')).toContain('~1 prompt.submit')
 })
 
+test('/dev/null and other /dev paths pick no trap', async ($, on) => {
+  brainFs(on, { '/proj/.brain/traps': '~1 claude -p needs < /dev/null when run from a script #plugin\n' })
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))
+  const r = await $.tool.call({ tool: 'Bash', command: 'ls build > /dev/null 2>&1' })
+  expect(r.context ?? []).toEqual([])
+})
+
 test('a path inside a heredoc script still picks its trap', async ($, on) => {
   brainFs(on)
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } as never }))

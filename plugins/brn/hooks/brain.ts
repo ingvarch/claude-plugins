@@ -183,7 +183,8 @@ export function needlesFromCommand(command: string): string[] {
         .toLowerCase()
         .split(/[^a-z0-9_./-]+/)
         .map(w => w.replace(/^[./-]+|[./-]+$/g, ''))
-        .filter(w => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w)),
+        // /dev/null, /dev/stdin: plumbing in half of all commands, never what a command is about.
+        .filter(w => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w) && !w.startsWith('dev/')),
     ),
   )
 }
